@@ -1,0 +1,91 @@
+{
+    "report_name": "Non-Delivery Report - Last 7 Days",
+
+    "_what_it_does": [
+        "Fetches only the UNDELIVERED orders from the past 7 days.",
+        "Produces TWO sheets:",
+        "  Sheet 1 — 'Failed Deliveries': every undelivered row with date, franchise, route, reason.",
+        "  Sheet 2 — 'Reason Summary': groups by non_delivery_reason and counts how many times",
+        "            each reason appears. Sorted highest to lowest.",
+        "Uses: filter (delivered=0), drop_columns, fillna (for missing reasons), groupby, sort."
+    ],
+
+    "reference_date": "2022-01-27",
+
+    "extract": {
+        "db_profile": "local_postgres",
+        "queries": [
+            {
+                "name": "undelivered_raw",
+                "query": "SELECT date, franchise, route, amount, non_delivery_reason FROM sale_distribution WHERE date BETWEEN '{reference_date}'::date - 6 AND '{reference_date}'::date AND delivered = 0"
+            }
+        ]
+    },
+
+    "transform": [
+        {
+            "name": "Clean up undelivered list",
+            "input": "undelivered_raw",
+            "output": "failed_deliveries",
+            "operations": [
+                {
+                    "type": "fillna",
+                    "columns": ["non_delivery_reason"],
+                    "value": "No reason given"
+                },
+                {
+                    "type": "rename",
+                    "mapping": {
+                        "date":                "Date",
+                        "franchise":           "Franchise",
+                        "route":               "Route",
+                        "amount":              "Amount",
+                        "non_delivery_reason": "Reason"
+                    }
+                },
+                {
+                    "type": "sort",
+                    "by": ["Date", "Franchise"],
+                    "ascending": true
+                }
+            ]
+        },
+        {
+            "name": "Count by failure reason",
+            "input": "undelivered_raw",
+            "output": "reason_summary",
+            "operations": [
+                {
+                    "type": "fillna",
+                    "columns": ["non_delivery_reason"],
+                    "value": "No reason given"
+                },
+                {
+                    "type": "groupby",
+                    "group_by": ["non_delivery_reason"],
+                    "aggregations": { "amount": "count" }
+                },
+                {
+                    "type": "rename",
+                    "mapping": {
+                        "non_delivery_reason": "Reason",
+                        "amount":              "Count"
+                    }
+                },
+                {
+                    "type": "sort",
+                    "by": ["Count"],
+                    "ascending": false
+                }
+            ]
+        }
+    ],
+
+    "load": {
+        "google_sheet_id": "1j04EJhmXddBLz4RM5rLx8oe3hMIh9s99fcDOjM0iLWI",
+        "sheets": [
+            { "name": "Failed Deliveries", "input": "failed_deliveries" },
+            { "name": "Reason Summary",    "input": "reason_summary" }
+        ]
+    }
+}

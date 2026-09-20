@@ -1,0 +1,81 @@
+{
+    "report_name": "Route Performance - Last 7 Days",
+
+    "_what_it_does": [
+        "Fetches all sales for the past 7 days grouped by route.",
+        "Calculates for each route: total orders, revenue, deliveries, and delivery rate %.",
+        "Delivery rate = (delivered / total orders) × 100.",
+        "Sorted by delivery rate lowest first — so worst-performing routes appear at the top.",
+        "Uses: groupby, calculate (percentage), round, rename, sort."
+    ],
+
+    "reference_date": "2022-01-27",
+
+    "extract": {
+        "db_profile": "local_postgres",
+        "queries": [
+            {
+                "name": "sales_raw",
+                "query": "SELECT route, amount, delivered FROM sale_distribution WHERE date BETWEEN '{reference_date}'::date - 6 AND '{reference_date}'::date"
+            }
+        ]
+    },
+
+    "transform": [
+        {
+            "name": "Route totals",
+            "input": "sales_raw",
+            "output": "route_totals",
+            "operations": [
+                {
+                    "type": "calculate",
+                    "target": "order_count",
+                    "expression": "delivered * 0 + 1",
+                    "fillna": 1
+                },
+                {
+                    "type": "groupby",
+                    "group_by": ["route"],
+                    "aggregations": {
+                        "order_count": "sum",
+                        "amount":      "sum",
+                        "delivered":   "sum"
+                    }
+                },
+                {
+                    "type": "calculate",
+                    "target": "delivery_rate_pct",
+                    "expression": "(delivered / order_count) * 100",
+                    "fillna": 0
+                },
+                {
+                    "type": "astype",
+                    "column": "delivery_rate_pct",
+                    "dtype": "float"
+                },
+                {
+                    "type": "rename",
+                    "mapping": {
+                        "route":               "Route",
+                        "order_count":         "Total Orders",
+                        "amount":              "Total Revenue",
+                        "delivered":           "Delivered",
+                        "delivery_rate_pct":   "Delivery Rate %"
+                    }
+                },
+                {
+                    "type": "sort",
+                    "by": ["Delivery Rate %"],
+                    "ascending": true
+                }
+            ]
+        }
+    ],
+
+    "load": {
+        "google_sheet_id": "1j04EJhmXddBLz4RM5rLx8oe3hMIh9s99fcDOjM0iLWI",
+        "sheets": [
+            { "name": "Route Performance", "input": "route_totals" }
+        ]
+    }
+}

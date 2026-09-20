@@ -1,0 +1,111 @@
+{
+    "report_name": "Test 01 - Delivery Boy Leaderboard",
+
+    "_what_it_does": [
+        "Fetches 7 days of sales and the delivery boy name lookup separately.",
+        "Groups by delivery boy ID to get total revenue, deliveries, and failures.",
+        "Merges the name lookup so IDs become real names.",
+        "Ranks every delivery boy by revenue collected — rank 1 = top earner.",
+        "NEW operation tested: rank"
+    ],
+
+    "reference_date": "2022-01-27",
+
+    "extract": {
+        "db_profile": "local_postgres",
+        "queries": [
+            {
+                "name": "sales_raw",
+                "query": "SELECT delivery_boy, amount, delivered FROM sale_distribution WHERE date BETWEEN '{reference_date}'::date - 6 AND '{reference_date}'::date AND delivery_boy IS NOT NULL"
+            },
+            {
+                "name": "delivery_boy_lkp",
+                "query": "SELECT id, name FROM delivery_boy_master"
+            }
+        ]
+    },
+
+    "transform": [
+        {
+            "name": "Step 1 - Sum revenue and counts per delivery boy",
+            "input": "sales_raw",
+            "output": "boy_totals",
+            "operations": [
+                {
+                    "type": "calculate",
+                    "target": "undelivered",
+                    "expression": "1 - delivered",
+                    "fillna": 0
+                },
+                {
+                    "type": "groupby",
+                    "group_by": ["delivery_boy"],
+                    "aggregations": {
+                        "amount":      "sum",
+                        "delivered":   "sum",
+                        "undelivered": "sum"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Step 2 - Attach delivery boy names",
+            "input": "boy_totals",
+            "output": "boy_named",
+            "operations": [
+                {
+                    "type": "merge",
+                    "right_input": "delivery_boy_lkp",
+                    "left_on": "delivery_boy",
+                    "right_on": "id",
+                    "how": "left"
+                },
+                {
+                    "type": "drop_columns",
+                    "columns": ["id"]
+                }
+            ]
+        },
+        {
+            "name": "Step 3 - Rank by revenue and sort",
+            "input": "boy_named",
+            "output": "leaderboard",
+            "operations": [
+                {
+                    "type": "rank",
+                    "rank_by": "amount",
+                    "ascending": false,
+                    "output_column": "Rank"
+                },
+                {
+                    "type": "sort",
+                    "by": ["Rank"],
+                    "ascending": true
+                },{
+                     "type": "filter",
+      "conditions": [
+          { "column": "Rank", "operator": "<=", "value": 5 }
+      ]
+  }
+                
+                {
+                    "type": "rename",
+                    "mapping": {
+                        "delivery_boy": "Boy ID",
+                        "name":         "Name",
+                        "amount":       "Revenue Collected",
+                        "delivered":    "Delivered",
+                        "undelivered":  "Failed"
+                    }
+                }
+            ]
+        }
+    ],
+
+    "load": {
+        "google_sheet_id": "1j04EJhmXddBLz4RM5rLx8oe3hMIh9s99fcDOjM0iLWI",
+        "sheets": [
+            { "name": "Delivery Boy Leaderboard", "input": "leaderboard" }
+        ]
+    }
+}

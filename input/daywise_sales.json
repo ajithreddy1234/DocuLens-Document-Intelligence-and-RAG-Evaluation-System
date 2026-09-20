@@ -1,0 +1,69 @@
+{
+    "report_name": "Daywise Sales - Last 7 Days",
+
+    "_what_it_does": [
+        "Fetches every sale record for the past 7 days.",
+        "Groups them by date so you get one row per day.",
+        "Calculates: total orders, total revenue, delivered count, undelivered count.",
+        "Sorts oldest to newest.",
+        "Result: a clean daily summary — good for spotting trends across the week."
+    ],
+
+    "reference_date": "2022-01-27",
+
+    "extract": {
+        "db_profile": "local_postgres",
+        "queries": [
+            {
+                "name": "sales_raw",
+                "query": "SELECT date, amount, delivered FROM sale_distribution WHERE date BETWEEN '{reference_date}'::date - 6 AND '{reference_date}'::date"
+            }
+        ]
+    },
+
+    "transform": [
+        {
+            "name": "Group by day and summarise",
+            "input": "sales_raw",
+            "output": "daily_summary",
+            "operations": [
+                {
+                    "type": "calculate",
+                    "target": "undelivered",
+                    "expression": "1 - delivered",
+                    "fillna": 0
+                },
+                {
+                    "type": "groupby",
+                    "group_by": ["date"],
+                    "aggregations": {
+                        "amount":      "sum",
+                        "delivered":   "sum",
+                        "undelivered": "sum"
+                    }
+                },
+                {
+                    "type": "rename",
+                    "mapping": {
+                        "date":        "Sale Date",
+                        "amount":      "Total Revenue",
+                        "delivered":   "Delivered",
+                        "undelivered": "Undelivered"
+                    }
+                },
+                {
+                    "type": "sort",
+                    "by": ["Sale Date"],
+                    "ascending": true
+                }
+            ]
+        }
+    ],
+
+    "load": {
+        "google_sheet_id": "1j04EJhmXddBLz4RM5rLx8oe3hMIh9s99fcDOjM0iLWI",
+        "sheets": [
+            { "name": "Daily Sales", "input": "daily_summary" }
+        ]
+    }
+}

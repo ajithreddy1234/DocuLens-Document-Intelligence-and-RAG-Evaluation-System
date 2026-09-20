@@ -1,0 +1,89 @@
+{
+    "report_name": "Franchise Summary - Last 7 Days",
+
+    "_what_it_does": [
+        "Fetches all sales for the past 7 days.",
+        "Produces TWO sheets:",
+        "  Sheet 1 — 'By Franchise': one row per franchise per day (revenue, delivered, undelivered).",
+        "  Sheet 2 — 'Franchise Pivot': franchises as rows, dates as columns, revenue as values.",
+        "            Useful for comparing franchises side-by-side across the week.",
+        "Uses: groupby, rename, sort, pivot with a Total row."
+    ],
+
+    "reference_date": "2022-01-27",
+
+    "extract": {
+        "db_profile": "local_postgres",
+        "queries": [
+            {
+                "name": "sales_raw",
+                "query": "SELECT date, franchise, amount, delivered FROM sale_distribution WHERE date BETWEEN '{reference_date}'::date - 6 AND '{reference_date}'::date"
+            }
+        ]
+    },
+
+    "transform": [
+        {
+            "name": "Franchise daily breakdown",
+            "input": "sales_raw",
+            "output": "franchise_daily",
+            "operations": [
+                {
+                    "type": "calculate",
+                    "target": "undelivered",
+                    "expression": "1 - delivered",
+                    "fillna": 0
+                },
+                {
+                    "type": "groupby",
+                    "group_by": ["franchise", "date"],
+                    "aggregations": {
+                        "amount":      "sum",
+                        "delivered":   "sum",
+                        "undelivered": "sum"
+                    }
+                },
+                {
+                    "type": "rename",
+                    "mapping": {
+                        "franchise":   "Franchise",
+                        "date":        "Sale Date",
+                        "amount":      "Revenue",
+                        "delivered":   "Delivered",
+                        "undelivered": "Undelivered"
+                    }
+                },
+                {
+                    "type": "sort",
+                    "by": ["Franchise", "Sale Date"],
+                    "ascending": true
+                }
+            ]
+        },
+        {
+            "name": "Franchise vs date pivot",
+            "input": "sales_raw",
+            "output": "franchise_pivot",
+            "operations": [
+                {
+                    "type": "pivot",
+                    "index": ["franchise"],
+                    "columns": "date",
+                    "values": "amount",
+                    "aggfunc": "sum",
+                    "fill_value": 0,
+                    "add_total_row": true,
+                    "total_row_label": "TOTAL"
+                }
+            ]
+        }
+    ],
+
+    "load": {
+        "google_sheet_id": "1j04EJhmXddBLz4RM5rLx8oe3hMIh9s99fcDOjM0iLWI",
+        "sheets": [
+            { "name": "By Franchise",    "input": "franchise_daily" },
+            { "name": "Franchise Pivot", "input": "franchise_pivot" }
+        ]
+    }
+}

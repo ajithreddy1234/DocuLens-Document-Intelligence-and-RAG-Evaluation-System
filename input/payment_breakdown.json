@@ -1,0 +1,78 @@
+{
+    "report_name": "Payment Breakdown - Last 7 Days",
+
+    "_what_it_does": [
+        "Fetches all sales for the past 7 days with payment columns.",
+        "Groups by date to show how customers are paying each day.",
+        "Columns: total revenue, wallet payments, delivery charges, packaging charges, CD credits used.",
+        "Also calculates 'Cash Collected' = revenue minus wallet and credits (what was collected in cash).",
+        "Uses: fillna (payment columns often have nulls), groupby, calculate, rename, sort."
+    ],
+
+    "reference_date": "2022-01-27",
+
+    "extract": {
+        "db_profile": "local_postgres",
+        "queries": [
+            {
+                "name": "payments_raw",
+                "query": "SELECT date, amount, from_wallet, delivery_charge, packaging_charge, cd_credits_used FROM sale_distribution WHERE date BETWEEN '{reference_date}'::date - 6 AND '{reference_date}'::date AND delivered = 1"
+            }
+        ]
+    },
+
+    "transform": [
+        {
+            "name": "Daily payment summary",
+            "input": "payments_raw",
+            "output": "payment_summary",
+            "operations": [
+                {
+                    "type": "fillna",
+                    "value": 0
+                },
+                {
+                    "type": "groupby",
+                    "group_by": ["date"],
+                    "aggregations": {
+                        "amount":           "sum",
+                        "from_wallet":      "sum",
+                        "delivery_charge":  "sum",
+                        "packaging_charge": "sum",
+                        "cd_credits_used":  "sum"
+                    }
+                },
+                {
+                    "type": "calculate",
+                    "target": "cash_collected",
+                    "expression": "amount - from_wallet - cd_credits_used",
+                    "fillna": 0
+                },
+                {
+                    "type": "rename",
+                    "mapping": {
+                        "date":             "Date",
+                        "amount":           "Total Revenue",
+                        "from_wallet":      "Wallet Payments",
+                        "delivery_charge":  "Delivery Charge",
+                        "packaging_charge": "Packaging Charge",
+                        "cd_credits_used":  "CD Credits Used",
+                        "cash_collected":   "Cash Collected"
+                    }
+                },
+                {
+                    "type": "sort",
+                    "by": ["Date"],
+                    "ascending": true
+                }
+            ]
+        }
+    ],
+
+    "load": {
+        "google_sheet_id": "1j04EJhmXddBLz4RM5rLx8oe3hMIh9s99fcDOjM0iLWI",
+        "sheets": [
+            { "name": "Payment Breakdown", "input": "payment_summary" }
+        ]
+    }
+}

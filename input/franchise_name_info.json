@@ -1,0 +1,97 @@
+{
+    "report_name": "Franchise Name Info - Last 7 Days",
+
+    "_what_it_does": [
+        "Fetches delivered sales joined with franchise_master to get area names.",
+        "Groups by franchise (code + name) and date to get daily revenue per franchise.",
+        "Pivots: franchises as rows, dates as columns.",
+        "Adds a 'Weekly Total' column — sum of all days for each franchise.",
+        "Adds a 'Daily Total' row at the bottom — sum of all franchises for each day.",
+        "Result: a full franchise × date matrix with row totals and column totals."
+    ],
+
+    "reference_date": "2022-01-27",
+
+    "extract": {
+        "db_profile": "local_postgres",
+        "queries": [
+            {
+                "name": "sales_raw",
+                "query": "SELECT date, franchise, amount FROM sale_distribution WHERE date BETWEEN '{reference_date}'::date - 6 AND '{reference_date}'::date AND delivered = 1"
+            },
+            {
+                "name": "franchise_master",
+                "query": "SELECT id, name AS franchise_name FROM franchise_master"
+            }
+        ]
+    },
+
+    "transform": [
+        {
+            "name": "Join franchise names onto sales",
+            "input": "sales_raw",
+            "output": "sales_with_names",
+            "operations": [
+                {
+                    "type": "merge",
+                    "right_input": "franchise_master",
+                    "left_on": "franchise",
+                    "right_on": "id",
+                    "how": "left"
+                },
+                {
+                    "type": "drop_columns",
+                    "columns": ["id"]
+                }
+            ]
+        },
+        {
+            "name": "Group by franchise and date",
+            "input": "sales_with_names",
+            "output": "franchise_daily",
+            "operations": [
+                {
+                    "type": "groupby",
+                    "group_by": ["franchise", "franchise_name", "date"],
+                    "aggregations": { "amount": "sum" }
+                }
+            ]
+        },
+        {
+            "name": "Pivot into franchise × date matrix",
+            "input": "franchise_daily",
+            "output": "franchise_matrix",
+            "operations": [
+                {
+                    "type": "pivot",
+                    "index": ["franchise", "franchise_name"],
+                    "columns": "date",
+                    "values": "amount",
+                    "aggfunc": "sum",
+                    "fill_value": 0,
+                    "add_total_row": true,
+                    "total_row_label": "Daily Total"
+                },
+                {
+                    "type": "add_total_column",
+                    "label": "Weekly Total",
+                    "exclude_columns": ["franchise"]
+                },
+                {
+                    "type": "rename",
+                    "mapping": {
+                        "franchise":      "Franchise Code",
+                        "franchise_name": "Franchise Name"
+                    }
+                }
+            ]
+        }
+    ],
+
+    "load": {
+        "google_sheet_id": "1j04EJhmXddBLz4RM5rLx8oe3hMIh9s99fcDOjM0iLWI",
+        "sheets": [
+            { "name": "Franchise Sales Matrix", "input": "franchise_matrix" }
+        ]
+    }
+}
